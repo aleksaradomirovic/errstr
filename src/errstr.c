@@ -5,33 +5,117 @@
 
 #include "errstr.h"
 
+#include <pthread.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 
 #ifndef ERRSTR_DEFAULT_BUF_SIZE
-#   define ERRSTR_DEFAULT_BUF_SIZE BUFSIZ
+#   define ERRSTR_DEFAULT_BUF_SIZE (256)
 #endif
 
-#define errstr_buf_size_plus_nul ERRSTR_DEFAULT_BUF_SIZE
-#define errstr_buf_size (errstr_buf_size_plus_nul - 1)
-static thread_local char errstr_buf[errstr_buf_size_plus_nul] = { [errstr_buf_size_plus_nul - 1] = '\0' };
-static thread_local size_t errstr_buf_len = 0;
+#ifndef ERRSTR_MAX_BUF_SIZE
+#   define ERRSTR_MAX_BUF_SIZE (BUFSIZ)
+#endif
+
+static_assert(ERRSTR_MAX_BUF_SIZE >= ERRSTR_DEFAULT_BUF_SIZE);
+
+struct errstr_buffer {
+    size_t capacity;
+    size_t length;
+
+    char buffer[];
+};
+
+static pthread_once_t errstrbuf_init_flag = PTHREAD_ONCE_INIT;
+static pthread_key_t errstrbuf_key;
+static bool errstrbuf_key_exists = false;
+
+static void errstrbuf_free(void *buffer) {
+    free(buffer);
+    pthread_setspecific(errstrbuf_key, NULL);
+}
+
+static void errstrbuf_key_init() {
+    errstrbuf_key_exists = !pthread_key_create(&errstrbuf_key, errstrbuf_free);
+}
+
+static struct errstr_buffer * errstrbuf_allocate(size_t capacity) {
+    struct errstr_buffer *buffer = malloc(sizeof(struct errstr_buffer) + capacity);
+    if(!buffer) {
+        return NULL;
+    }
+
+    buffer->capacity = capacity - 1;
+    buffer->length = 0;
+    buffer->buffer[capacity - 1] = '\0';
+
+    if(pthread_setspecific(errstrbuf_key, buffer)) {
+        free(buffer);
+        buffer = NULL;
+    }
+
+    return buffer;
+}
+
+static struct errstr_buffer * errstrbuf_get() {
+    if(pthread_once(&errstrbuf_init_flag, errstrbuf_key_init) || !errstrbuf_key_exists) {
+        return NULL;
+    }
+
+    struct errstr_buffer *buffer = pthread_getspecific(errstrbuf_key);
+    if(buffer) {
+        return buffer;
+    }
+
+    return errstrbuf_allocate(ERRSTR_DEFAULT_BUF_SIZE);
+}
+
+static size_t errstrbuf_real_capacity(struct errstr_buffer *buffer) {
+    return buffer->capacity - 1;
+}
+
+static size_t errstrbuf_space(struct errstr_buffer *buffer) {
+    return errstrbuf_real_capacity(buffer) - buffer->length;
+}
+
+static char * errstrbuf_loc_with_length(struct errstr_buffer *buffer, size_t length) {
+    return buffer->buffer + errstrbuf_real_capacity(buffer) - length;
+}
+
+static char * errstrbuf_loc(struct errstr_buffer *buffer) {
+    return errstrbuf_loc_with_length(buffer, buffer->length);
+}
 
 size_t errstr_length() {
-    return errstr_buf_len;
+    struct errstr_buffer *restrict errstrbuf = errstrbuf_get();
+    if(!errstrbuf) {
+        return 0;
+    }
+
+    return errstrbuf->length;
 }
 
 const char *errstr_location() {
-    return errstr_buf + errstr_buf_size - errstr_buf_len;
+    struct errstr_buffer *restrict errstrbuf = errstrbuf_get();
+    if(!errstrbuf) {
+        return NULL;
+    }
+
+    return errstrbuf_loc(errstrbuf);
 }
 
 void errstr_clear() {
-    errstr_buf_len = 0;
+    struct errstr_buffer *restrict errstrbuf = errstrbuf_get();
+    if(!errstrbuf) {
+        return;
+    }
+
+    errstrbuf->length = 0;
 }
 
 int errstr_present() {
-    return (errstr_length() > 0);
+    return errstr_length() > 0;
 }
 
 size_t errstrf(const char *fmt, ...) {
@@ -46,21 +130,29 @@ size_t errstrf(const char *fmt, ...) {
 }
 
 size_t verrstrf(const char *fmt, va_list args) {
-    char prepend_buf[errstr_buf_size_plus_nul];
-
-    int prepend_length = vsnprintf(prepend_buf, errstr_buf_size_plus_nul, fmt, args);
-    if(prepend_length < 0 || prepend_length >= errstr_buf_size_plus_nul) {
-        strncpy(prepend_buf, "(format error) ", errstr_buf_size_plus_nul);
-        prepend_length = strlen(prepend_buf);
+    struct errstr_buffer *restrict errstrbuf = errstrbuf_get();
+    if(!errstrbuf) {
+        return 0;
     }
 
-    if(prepend_length > errstr_buf_size - errstr_buf_len) {
-        size_t append_length = errstr_buf_size - prepend_length;
-        memmove(errstr_buf + errstr_buf_size - append_length, errstr_buf + errstr_buf_size - errstr_buf_len, append_length);
-        errstr_buf_len = append_length;
-    }
-    memcpy(errstr_buf + errstr_buf_size - errstr_buf_len - prepend_length, prepend_buf, prepend_length);
+    char prepend_buf[ERRSTR_MAX_BUF_SIZE];
 
-    errstr_buf_len += prepend_length;
-    return errstr_buf_len;
+    int prepend_length = vsnprintf(prepend_buf, sizeof(prepend_buf), fmt, args);
+    if(prepend_length < 0 || prepend_length >= sizeof(prepend_buf)) {
+        strncpy(prepend_buf, "(format error) ", sizeof(prepend_buf));
+        prepend_length = strnlen(prepend_buf, sizeof(prepend_buf));
+    }
+
+    if(prepend_length > errstrbuf_space(errstrbuf)) {
+        if(prepend_length > errstrbuf_real_capacity(errstrbuf)) {
+            prepend_length = errstrbuf_real_capacity(errstrbuf);
+        }
+        size_t append_length = errstrbuf_real_capacity(errstrbuf) - prepend_length;
+        memmove(errstrbuf_loc_with_length(errstrbuf, append_length), errstrbuf_loc(errstrbuf), append_length);
+        errstrbuf->length = append_length;
+    }
+    memcpy(errstrbuf_loc(errstrbuf) - prepend_length, prepend_buf, prepend_length);
+
+    errstrbuf->length += prepend_length;
+    return errstrbuf->length;
 }

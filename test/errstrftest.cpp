@@ -33,3 +33,12 @@ TEST(errstrftest, compound) {
     EXPECT_STREQ(errstr, "test2: test");
     EXPECT_TRUE(errstr_present());
 }
+
+TEST(errstrftest, overflow) {
+    errstr_clear();
+
+    for(size_t i = 0; i < 10000; i++) {
+        ASSERT_GT(errstrf("%s", "test:"), 0);
+        ASSERT_EQ(errstr[0], 't');
+    }
+}

@@ -13,19 +13,21 @@
 #   define ERRSTR_DEFAULT_BUF_SIZE BUFSIZ
 #endif
 
-#define errstr_buf_size ERRSTR_DEFAULT_BUF_SIZE
-static thread_local char errstr_buf[errstr_buf_size] = { '\0' };
+#define errstr_buf_size_plus_nul ERRSTR_DEFAULT_BUF_SIZE
+#define errstr_buf_size (errstr_buf_size_plus_nul - 1)
+static thread_local char errstr_buf[errstr_buf_size_plus_nul] = { [errstr_buf_size_plus_nul - 1] = '\0' };
+static thread_local size_t errstr_buf_len = 0;
 
 size_t errstr_length() {
-    return strnlen(errstr_buf, errstr_buf_size);
+    return errstr_buf_len;
 }
 
 const char *errstr_location() {
-    return errstr_buf;
+    return errstr_buf + errstr_buf_size - errstr_buf_len;
 }
 
 void errstr_clear() {
-    memset(errstr_buf, 0, errstr_buf_size);
+    errstr_buf_len = 0;
 }
 
 int errstr_present() {
@@ -44,19 +46,20 @@ size_t errstrf(const char *fmt, ...) {
 }
 
 size_t verrstrf(const char *fmt, va_list args) {
-    char append_buf[errstr_buf_size];
-    strncpy(append_buf, errstr_buf, errstr_buf_size);
+    char prepend_buf[errstr_buf_size_plus_nul];
 
-    char *buf_ptr = errstr_buf;
-    int print_length = vsnprintf(buf_ptr, errstr_buf_size - (buf_ptr - errstr_buf), fmt, args);
-    if(print_length < 0) {
-        buf_ptr = stpncpy(buf_ptr, "(format error) ", errstr_buf_size - (buf_ptr - errstr_buf));
-    } else if(print_length >= errstr_buf_size) {
-        return errstr_buf_size;
-    } else {
-        buf_ptr += print_length;
+    int prepend_length = vsnprintf(prepend_buf, errstr_buf_size_plus_nul, fmt, args);
+    if(prepend_length < 0 || prepend_length >= errstr_buf_size_plus_nul) {
+        strncpy(prepend_buf, "(format error) ", errstr_buf_size_plus_nul);
+        prepend_length = strlen(prepend_buf);
     }
 
-    buf_ptr = stpncpy(buf_ptr, append_buf, errstr_buf_size - (buf_ptr - errstr_buf));
-    return buf_ptr - errstr_buf;
+    if(prepend_length > errstr_buf_size - errstr_buf_len) {
+        // PANIC!!!! (TODO truncate)
+    } else {
+        memcpy(errstr_buf + errstr_buf_size - errstr_buf_len - prepend_length, prepend_buf, prepend_length);
+    }
+
+    errstr_buf_len += prepend_length;
+    return errstr_buf_len;
 }

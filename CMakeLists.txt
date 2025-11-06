@@ -7,6 +7,7 @@ project(errstr LANGUAGES C)
 set(CMAKE_C_STANDARD 23)
 
 option(BUILD_SHARED_LIBS "Build as shared library" ON)
+set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
 
 add_library(
     errstr

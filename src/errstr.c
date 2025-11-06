@@ -55,10 +55,11 @@ size_t verrstrf(const char *fmt, va_list args) {
     }
 
     if(prepend_length > errstr_buf_size - errstr_buf_len) {
-        // PANIC!!!! (TODO truncate)
-    } else {
-        memcpy(errstr_buf + errstr_buf_size - errstr_buf_len - prepend_length, prepend_buf, prepend_length);
+        size_t append_length = errstr_buf_size - prepend_length;
+        memmove(errstr_buf + errstr_buf_size - append_length, errstr_buf + errstr_buf_size - errstr_buf_len, append_length);
+        errstr_buf_len = append_length;
     }
+    memcpy(errstr_buf + errstr_buf_size - errstr_buf_len - prepend_length, prepend_buf, prepend_length);
 
     errstr_buf_len += prepend_length;
     return errstr_buf_len;

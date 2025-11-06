@@ -18,7 +18,7 @@
 #define ERRSTR_H_
 
 #include <stdarg.h>
-#include <stddef.h>
+#include <stdlib.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -89,6 +89,25 @@ __attribute__((format(printf, 1, 0)))
 #   endif
 #endif
 size_t verrstrf(const char *fmt, va_list args);
+
+
+/**
+ * Prepend as if using {@link errstrf}, then return **value** from the current function.
+ * @param value return value
+ * @param fmt same as in {@link errstrf}
+ * @param ... same as in {@link errstrf}
+ *
+ * @note This is a macro, **not a function**, for convenient error reporting. It will cause the calling function to return.
+ */
+#define errstrf_return(value, fmt, ...) { errstrf(fmt __VA_OPT__(,) __VA_ARGS__); return value; }
+
+/**
+ * Prepend as if using {@link errstrf}, then call <a href="https://en.cppreference.com/w/c/program/exit.html">exit</a> with **status**.
+ * @param status exit status
+ * @param fmt same as in {@link errstrf}
+ * @param ... same as in {@link errstrf}
+ */
+#define errstrf_exit(status, fmt, ...) { errstrf(fmt __VA_OPT__(,) __VA_ARGS__); exit(status); }
 
 
 #ifdef __cplusplus

@@ -40,15 +40,39 @@ static void errstrbuf_key_init() {
     errstrbuf_key_exists = !pthread_key_create(&errstrbuf_key, errstrbuf_free);
 }
 
+static size_t errstrbuf_max_capacity() {
+    return ERRSTR_MAX_BUF_SIZE - 1;
+}
+
+static size_t errstrbuf_space(struct errstr_buffer *buffer) {
+    return buffer->capacity - buffer->length;
+}
+
+static char * errstrbuf_loc_with_capacity_and_length(struct errstr_buffer *buffer, size_t capacity, size_t length) {
+    return buffer->buffer + capacity - length;
+}
+
+static char * errstrbuf_loc_with_length(struct errstr_buffer *buffer, size_t length) {
+    return errstrbuf_loc_with_capacity_and_length(buffer, buffer->capacity, length);
+}
+
+static char * errstrbuf_loc(struct errstr_buffer *buffer) {
+    return errstrbuf_loc_with_length(buffer, buffer->length);
+}
+
 static struct errstr_buffer * errstrbuf_allocate(size_t capacity) {
-    struct errstr_buffer *buffer = malloc(sizeof(struct errstr_buffer) + capacity);
+    if(capacity > errstrbuf_max_capacity()) {
+        return NULL;
+    }
+
+    struct errstr_buffer *buffer = malloc(sizeof(struct errstr_buffer) + capacity + 1);
     if(!buffer) {
         return NULL;
     }
 
-    buffer->capacity = capacity - 1;
+    buffer->capacity = capacity;
     buffer->length = 0;
-    buffer->buffer[capacity - 1] = '\0';
+    buffer->buffer[capacity] = '\0';
 
     if(pthread_setspecific(errstrbuf_key, buffer)) {
         free(buffer);
@@ -56,6 +80,22 @@ static struct errstr_buffer * errstrbuf_allocate(size_t capacity) {
     }
 
     return buffer;
+}
+
+static struct errstr_buffer * errstrbuf_resize(struct errstr_buffer *buffer, size_t capacity) {
+    if(buffer->capacity > capacity) {
+        return buffer;
+    }
+
+    struct errstr_buffer *nbuf = errstrbuf_allocate(capacity);
+    if(!nbuf) {
+        return buffer;
+    }
+
+    memcpy(errstrbuf_loc_with_length(nbuf, buffer->length), errstrbuf_loc(buffer), buffer->length);
+    free(buffer);
+
+    return nbuf;
 }
 
 static struct errstr_buffer * errstrbuf_get() {
@@ -68,23 +108,7 @@ static struct errstr_buffer * errstrbuf_get() {
         return buffer;
     }
 
-    return errstrbuf_allocate(ERRSTR_DEFAULT_BUF_SIZE);
-}
-
-static size_t errstrbuf_real_capacity(struct errstr_buffer *buffer) {
-    return buffer->capacity - 1;
-}
-
-static size_t errstrbuf_space(struct errstr_buffer *buffer) {
-    return errstrbuf_real_capacity(buffer) - buffer->length;
-}
-
-static char * errstrbuf_loc_with_length(struct errstr_buffer *buffer, size_t length) {
-    return buffer->buffer + errstrbuf_real_capacity(buffer) - length;
-}
-
-static char * errstrbuf_loc(struct errstr_buffer *buffer) {
-    return errstrbuf_loc_with_length(buffer, buffer->length);
+    return errstrbuf_allocate(ERRSTR_DEFAULT_BUF_SIZE - 1);
 }
 
 size_t errstr_length() {
@@ -144,12 +168,17 @@ size_t verrstrf(const char *fmt, va_list args) {
     }
 
     if(prepend_length > errstrbuf_space(errstrbuf)) {
-        if(prepend_length > errstrbuf_real_capacity(errstrbuf)) {
-            prepend_length = errstrbuf_real_capacity(errstrbuf);
+        size_t wanted_capacity = prepend_length + errstrbuf->length;
+        if(wanted_capacity > errstrbuf_max_capacity()) {
+            wanted_capacity = errstrbuf_max_capacity();
         }
-        size_t append_length = errstrbuf_real_capacity(errstrbuf) - prepend_length;
-        memmove(errstrbuf_loc_with_length(errstrbuf, append_length), errstrbuf_loc(errstrbuf), append_length);
-        errstrbuf->length = append_length;
+        errstrbuf = errstrbuf_resize(errstrbuf, wanted_capacity);
+
+        size_t append_length = errstrbuf->capacity - prepend_length;
+        if(append_length < errstrbuf->length) {
+            memmove(errstrbuf_loc_with_length(errstrbuf, append_length), errstrbuf_loc(errstrbuf), append_length);
+            errstrbuf->length = append_length;
+        }
     }
     memcpy(errstrbuf_loc(errstrbuf) - prepend_length, prepend_buf, prepend_length);
 

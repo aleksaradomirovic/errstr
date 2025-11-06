@@ -9,10 +9,12 @@
 
 TEST(errstrftest, clear) {
     ASSERT_NE(errstrf("%s", "test"), 0);
+    ASSERT_TRUE(errstr_present());
     ASSERT_NE(errstrlen, 0);
 
     errstr_clear();
     EXPECT_EQ(errstrlen, 0);
+    EXPECT_FALSE(errstr_present());
 }
 
 TEST(errstrftest, basic) {
@@ -20,6 +22,7 @@ TEST(errstrftest, basic) {
 
     EXPECT_EQ(errstrf("%s", "test"), strlen("test"));
     EXPECT_STREQ(errstr, "test");
+    EXPECT_TRUE(errstr_present());
 }
 
 TEST(errstrftest, compound) {
@@ -28,4 +31,5 @@ TEST(errstrftest, compound) {
     ASSERT_EQ(errstrf("%s", "test"), strlen("test"));
     EXPECT_EQ(errstrf("%s", "test2: "), strlen("test2: ") + strlen("test"));
     EXPECT_STREQ(errstr, "test2: test");
+    EXPECT_TRUE(errstr_present());
 }

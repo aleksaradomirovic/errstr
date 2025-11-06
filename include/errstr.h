@@ -25,18 +25,69 @@ extern "C" {
 #endif
 
 
+/**
+ * Get the current length of the contents of this thread's error string buffer.
+ * @return the current length of the error string buffer
+ */
 size_t errstr_length();
+
+/**
+ * The current length of the contents of this thread's error string buffer.
+ */
 #define errstrlen (errstr_length())
 
+/**
+ * Get a pointer to this thread's error string buffer.
+ * @return a pointer to the error string buffer
+ */
 const char *errstr_location();
+
+/**
+ * A pointer to this thread's error string buffer.
+ */
 #define errstr (errstr_location())
 
+/**
+ * Clear the contents of this thread's error string buffer.
+ */
 void errstr_clear();
 
+/**
+ * Check whether this thread's error string buffer has contents.
+ * @return non-zero if contents are present, zero if not present
+ */
+int errstr_present();
+
+/**
+ * Prepend this thread's error string buffer with the given formatted string.
+ * @param fmt a format string
+ * @param ... arguments for a format string
+ * @return the new length of the error string buffer
+ *
+ * @see <a href="https://cppreference.com/w/c/io/fprintf.html">printf</a>
+ */
+
+#if defined(__has_attribute)
+#   if __has_attribute(format)
 __attribute__((format(printf, 1, 2)))
+#   endif
+#endif
 size_t errstrf(const char *fmt, ...);
 
+/**
+ * Prepend this thread's error string buffer with the given formatted string.
+ * @param fmt a format string
+ * @param args va_list of arguments for a format string
+ * @return the new length of the error string buffer
+ *
+ * @see <a href="https://cppreference.com/w/c/io/vfprintf.html">vprintf</a>
+ */
+
+#if defined(__has_attribute)
+#   if __has_attribute(format)
 __attribute__((format(printf, 1, 0)))
+#   endif
+#endif
 size_t verrstrf(const char *fmt, va_list args);
 
 

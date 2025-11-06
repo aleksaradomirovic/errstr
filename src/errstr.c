@@ -28,6 +28,10 @@ void errstr_clear() {
     memset(errstr_buf, 0, errstr_buf_size);
 }
 
+int errstr_present() {
+    return (errstr_length() > 0);
+}
+
 size_t errstrf(const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);

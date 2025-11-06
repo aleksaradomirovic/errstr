@@ -41,3 +41,16 @@ if(BUILD_TESTING AND PROJECT_IS_TOP_LEVEL)
 
     gtest_discover_tests(errstrftest)
 endif()
+
+if(GENERATE_DOCS AND PROJECT_IS_TOP_LEVEL)
+    find_package(Doxygen REQUIRED)
+
+    set(DOXYGEN_FILE_PATTERNS *.h)
+    set(DOXYGEN_EXTRACT_ALL YES)
+
+    doxygen_add_docs(
+        errstr_docs
+        ${CMAKE_SOURCE_DIR}/include
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/include
+    )
+endif()

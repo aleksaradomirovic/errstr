@@ -62,7 +62,7 @@ static char * errstrbuf_loc(struct errstr_buffer *buffer) {
 
 static struct errstr_buffer * errstrbuf_allocate(size_t capacity) {
     if(capacity > errstrbuf_max_capacity()) {
-        return NULL;
+        capacity = errstrbuf_max_capacity();
     }
 
     struct errstr_buffer *buffer = malloc(sizeof(struct errstr_buffer) + capacity + 1);
@@ -83,7 +83,7 @@ static struct errstr_buffer * errstrbuf_allocate(size_t capacity) {
 }
 
 static struct errstr_buffer * errstrbuf_resize(struct errstr_buffer *buffer, size_t capacity) {
-    if(buffer->capacity > capacity) {
+    if(buffer->capacity > capacity || buffer->capacity == errstrbuf_max_capacity()) {
         return buffer;
     }
 
@@ -169,9 +169,6 @@ size_t verrstrf(const char *fmt, va_list args) {
 
     if(prepend_length > errstrbuf_space(errstrbuf)) {
         size_t wanted_capacity = prepend_length + errstrbuf->length;
-        if(wanted_capacity > errstrbuf_max_capacity()) {
-            wanted_capacity = errstrbuf_max_capacity();
-        }
         errstrbuf = errstrbuf_resize(errstrbuf, wanted_capacity);
 
         size_t append_length = errstrbuf->capacity - prepend_length;
